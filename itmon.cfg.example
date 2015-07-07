@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# Reset all configuration arrays
+unset imsg_all_ids
+unset imsg_min_ids
+unset po_all_ids
+unset po_min_ids
+unset sms_min_ids
+unset chat_unames
+unset motd_unames
+unset msg_watch
+
+# Accounts to send iMessage alerts - All messages
+#############################################
+imsg_all_ids[0]="1234567890"           # User 1
+imsg_all_ids[1]="user@gmail.com"       # User 2
+
+# Accounts to send iMessage alerts - Test messages
+#############################################
+imsg_min_ids[0]="2345678901"           # User 3
+imsg_min_ids[1]="user@me.com"          # User 4
+
+# Pushover IDs to send alerts - All messages
+#############################################
+po_all_ids[0]="abcdefghijklmnopqrstuv" # CSE IT Group - All
+
+# Pushover IDs to send alerts - Test messages
+#############################################
+po_min_ids[0]="abcdefghijklmnopqrstuv" # CSE IT Group - Min
+
+# Numbers to send SMS alerts - Test messages
+#############################################
+sms_min_ids[0]="3456789012"            # User 5
+
+# All user names to watch for - Chat messages
+#############################################
+chat_unames[0]="^cse.*$"
+#chat_unames[1]="^.*$"
+#chat_unames[2]="^someuser$"
+
+# All user names to watch for - Set MOTD
+#############################################
+motd_unames[0]="^cse.*$"
+#motd_unames[1]="^.*$"
+#motd_unames[2]="^someuser$"
+
+# Messages to watch for - Test messages
+#############################################
+#msg_watch[0]=".*"
+msg_watch[1]=".*impromptu.*"
+msg_watch[2]=".* test .*"
+msg_watch[3]=".* testing .*"

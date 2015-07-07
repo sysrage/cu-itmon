@@ -1,0 +1,281 @@
+#! /bin/bash
+
+# Settings file location
+itmon_cfg="${HOME}/.itmon/itmon.cfg"
+
+# Log file location
+itmon_log="${HOME}/.itmon/itmon.log"
+
+# IT Chat log location
+itchat_file="${HOME}/.itmon/itchat.log"
+
+# IT Admin message log location
+itadmin_file="${HOME}/.itmon/itadmin.log"
+
+# MOTD storage file location
+motd_file="${HOME}/.itmon/itmon.motd"
+
+# MOTD opt-out storage file location
+optout_file="${HOME}/.itmon/motd.ignore"
+
+# Global chat room (_global) log base directory to monitor
+global_base="/Users/sysrage/Library/Application Support/Adium 2.0/Users/Default/Logs/Jabber.user@chat.camelotunchained.com/_global@conference.chat.camelotunchained.com/"
+
+# IT chat room (_it) log base directory to monitor
+it_base="/Users/sysrage/Library/Application Support/Adium 2.0/Users/Default/Logs/Jabber.user@chat.camelotunchained.com/_it@conference.chat.camelotunchained.com/"
+
+# CSE system message log base directory to monitor
+admin_base="/Users/sysrage/Library/Application Support/Adium 2.0/Users/Default/Logs/Jabber.user@chat.camelotunchained.com/chat.camelotunchained.com/"
+
+# IT combat log base directory to monitor
+combat_base="/Users/sysrage/Library/Application Support/Adium 2.0/Users/Default/Logs/Jabber.user@chat.camelotunchained.com/_combat@conference.chat.camelotunchained.com/"
+
+# Regex to match against each line
+msg_re="^<message sender=\".*@conference.chat.camelotunchained.com/(.*)\" time[^>]*><div>(.*)</div></message>"
+pm_re="^<message sender=\"(.*)chat.camelotunchained.com\" time[^>]*><div>(.*)</div></message>"
+join_re="^<status [^>]*><div><span[^>]*>(.*) entered the room.</span></div></status>"
+dc_re="^<status type=\"disconnected\" .*"
+c_re="^<status type=\"connected\" .*"
+
+dc_start=0
+date_format="+%Y-%m-%d %H:%M:%S"
+
+while sleep .5; do
+    # Load settings file
+    . ${itmon_cfg}
+
+    # Set some constants
+    date_epoch=`date "+%s"`
+
+    last_motd_index=0
+    for i in ${!motd_user[@]}; do
+        ((i > last_motd_index)) && last_motd_index=${i}
+    done
+
+    # Find the latest log file from each base directory
+    latest_global_log=`find "${global_base}" -type f -print0 | xargs -0 stat -f "%m %N" | sort -rn | head -1 | cut -f2- -d" "`
+    latest_it_log=`find "${it_base}" -type f -print0 | xargs -0 stat -f "%m %N" | sort -rn | head -1 | cut -f2- -d" "`
+    latest_admin_log=`find "${admin_base}" -type f -print0 | xargs -0 stat -f "%m %N" | sort -rn | head -1 | cut -f2- -d" "`
+    latest_combat_log=`find "${combat_base}" -type f -print0 | xargs -0 stat -f "%m %N" | sort -rn | head -1 | cut -f2- -d" "`
+
+    # Check how long Adium has been disconnected and restart after 120 seconds
+    dc_length=$(( ${date_epoch} - ${dc_start} ))
+    if [[ ! ${dc_start} == "0" ]] && [[ ${dc_length} -gt "120" ]]; then
+        echo -ne `date "${date_format}"` "- [ERROR] Adium disconnected from server and did not reconnect within 2 minutes. Restarting Adium...\n"
+        echo -ne `date "${date_format}"` "- [ERROR] Adium disconnected from server and did not reconnect within 2 minutes. Restarting Adium...\n" >> ${itmon_log}
+        adium-restart
+        dc_start=0
+        global_line=""
+    fi
+
+    # Parse list of users needing to receive MOTD
+    for i in ${!motd_user[@]}; do
+        mname=${motd_user[${i}]}
+        mtime=${motd_time[${i}]}
+        msent=${motd_sent[${i}]}
+        time_since_add=$(( ${date_epoch} - ${mtime} ))
+        time_since_sent=$(( ${date_epoch} - ${msent} ))
+        if [[ ${msent} == 0 ]] && [[ ${time_since_add} -gt 2 ]]; then
+            # Send MOTD if user joined more than 2 seconds ago
+            cat ${motd_file} | adium-msg ${mname}
+            motd_sent[${i}]=${date_epoch}
+            echo -ne `date "${date_format}"` "- [MOTD] MOTD sent to user '${mname}'.\n"
+            echo -ne `date "${date_format}"` "- [MOTD] MOTD sent to user '${mname}'.\n" >> ${itmon_log}
+        fi
+        if [[ ! ${msent} == 0 ]] && [[ ${time_since_sent} -gt 300 ]]; then
+            # Remove name from MOTD list 5 minutes after MOTD was sent
+            unset motd_user[${i}]
+            unset motd_time[${i}]
+            unset motd_sent[${i}]
+            echo -ne `date "${date_format}"` "- [MOTD] User '${mname}' removed from MOTD list.\n"
+            echo -ne `date "${date_format}"` "- [MOTD] User '${mname}' removed from MOTD list.\n" >> ${itmon_log}
+        fi
+    done
+
+    # Read last line from Global chat log
+    read=`tail -n1 "${latest_global_log}"`
+    if [[ ! "${read}" == "${global_line}" ]]; then
+        global_line=${read}
+        if [[ ${global_line} =~ ${join_re} ]]; then
+            # New join
+            dc_start=0
+            global_euser=${BASH_REMATCH[1]}
+            echo -ne `date "${date_format}"` "- [STATUS] User '${global_euser}' joined _global channel.\n"
+            echo -ne `date "${date_format}"` "- [STATUS] User '${global_euser}' joined _global channel.\n" >> ${itmon_log}
+        elif [[ ${global_line} =~ ${dc_re} ]]; then
+            # Disconnect
+            if [[ ${dc_start} == "0" ]]; then
+                dc_start=${date_epoch}
+                echo -ne `date "${date_format}"` "- [STATUS] Adium disconnected from server.\n"
+                echo -ne `date "${date_format}"` "- [STATUS] Adium disconnected from server.\n" >> ${itmon_log}
+            fi
+        elif [[ ${global_line} =~ ${c_re} ]]; then
+            # Connect
+            dc_start=0
+            echo -ne `date "${date_format}"` "- [STATUS] Adium connected to server.\n"
+            echo -ne `date "${date_format}"` "- [STATUS] Adium connected to server.\n" >> ${itmon_log}
+        fi
+    fi
+
+    # Read last line from IT chat log
+    read=`tail -n1 "${latest_it_log}"`
+    if [[ ! "${read}" == "${it_line}" ]]; then
+        it_line=${read}
+        if [[ ${it_line} =~ ${msg_re} ]]; then
+            # New message
+            msgsender=${BASH_REMATCH[1]}
+            msgtext=${BASH_REMATCH[2]}
+
+            # Clean up message text
+            msgtext=`echo "${msgtext}" | sed 's/<a [^>]*>//g'`
+            msgtext=`echo "${msgtext}" | sed 's/<\/a>//g'`
+            msgtext=`echo "${msgtext}" | sed 's/<span [^>]*>//g'`
+            msgtext=`echo "${msgtext}" | sed 's/<\/span>//g'`
+            msgtext=${msgtext//&apos;/\'}
+            msgtext=${msgtext//&quot;/\"}
+            msgtext=${msgtext//&lt;/<}
+            msgtext=${msgtext//&gt;/>}
+            msgtext=${msgtext//&amp;/&}
+            msgtext=${msgtext//<br \/>/ }
+
+            if [[ ${msgtext} == "!motd" ]]; then
+                # Send MOTD to IT channel
+                cat ${motd_file} | adium-chat _it
+                echo -ne `date "${date_format}"` "- [MOTD] MOTD sent to channel '_it' per user '${msgsender}'.\n"
+                echo -ne `date "${date_format}"` "- [MOTD] MOTD sent to channel '_it' per user '${msgsender}'.\n" >> ${itmon_log}
+            elif re="!motd .+" && [[ ${msgtext} =~ ${re} ]]; then
+                # Save new MOTD if user is allowed.
+                for i in "${motd_unames[@]}"; do
+                    if [[ ${msgsender} =~ ${i} ]]; then
+                        msgtext=${msgtext//!motd /}
+                        echo "MOTD: ${msgtext}" > ${motd_file}
+                        echo -ne `date "${date_format}"` "- [MOTD] New MOTD set by user '${msgsender}'.\n"
+                        echo -ne `date "${date_format}"` "- [MOTD] New MOTD set by user '${msgsender}'.\n" >> ${itmon_log}
+                    fi
+                done
+            elif [[ ${msgtext} == "!nomotd" ]]; then
+                # Add user to MOTD opt-out file
+                already_optout="no"
+                while read -r oline || [[ -n ${oline} ]]; do
+                    [[ "${oline}" == "${msgsender}" ]] && already_optout="yes"
+                done < ${optout_file}
+                if [[ "${already_optout}" == "no" ]]; then
+                    echo ${msgsender} >> ${optout_file}
+                    echo "You will no longer receive MOTD messages." | adium-msg ${msgsender}
+                    echo -ne `date "${date_format}"` "- [MOTD] User '${msgsender}' added to opt-out list.\n"
+                    echo -ne `date "${date_format}"` "- [MOTD] User '${msgsender}' added to opt-out list.\n" >> ${itmon_log}
+                fi
+            elif [[ ${msgtext} == "!yesmotd" ]]; then
+                # Remove user from MOTD opt-out file
+                while read -r oline || [[ -n ${oline} ]]; do
+                    if [[ "${oline}" == "${msgsender}" ]]; then
+                        echo "You will now receive MOTD messages." | adium-msg ${msgsender}
+                        echo -ne `date "${date_format}"` "- [MOTD] User '${msgsender}' removed from opt-out list.\n"
+                        echo -ne `date "${date_format}"` "- [MOTD] User '${msgsender}' removed from opt-out list.\n" >> ${itmon_log}
+                    else
+                        echo "${oline}" >> ${optout_file}.tmp
+                    fi
+                done < ${optout_file}
+                mv ${optout_file}.tmp ${optout_file}
+            else
+                # If message was sent by monitored user, save to a file for queued sending
+                for i in ${chat_unames[@]}; do
+                    if [[ ${msgsender} =~ ${i} ]]; then
+                        echo "${msgsender} ${msgtext}" >> ${itchat_file}
+                        echo -ne `date "${date_format}"` "- [MSG] New message from user '${msgsender}' stored.\n"
+                        echo -ne `date "${date_format}"` "- [MSG] New message from user '${msgsender}' stored.\n" >> ${itmon_log}
+                    fi
+                done
+            fi
+        elif [[ ${it_line} =~ ${join_re} ]]; then
+            # New join
+            dc_start=0            
+            it_euser=${BASH_REMATCH[1]}
+            echo -ne `date "${date_format}"` "- [STATUS] User '${it_euser}' joined _it channel.\n"
+            echo -ne `date "${date_format}"` "- [STATUS] User '${it_euser}' joined _it channel.\n" >> ${itmon_log}
+
+            # Search MOTD user array. If name doesn't exist, add to array.
+            old_motd_user="no"
+            for i in ${motd_user[@]}; do
+                [[ "${it_euser}" == "${i}" ]] && old_motd_user="yes"
+            done
+
+            # Search MOTD opt-out list. If name doesn't exist, add to array.
+            motd_optout_user="no"
+            while read -r oline || [[ -n ${oline} ]]; do
+                [[ "${oline}" == "${it_euser}" ]] && motd_optout_user="yes"
+            done < ${optout_file}
+
+            if [[ "${old_motd_user}" == "no" ]] && [[ "${motd_optout_user}" == "no" ]]; then
+                last_motd_index=$(( ${last_motd_index} + 1 ))
+                motd_time[${last_motd_index}]=${date_epoch}
+                motd_user[${last_motd_index}]=${it_euser}
+                motd_sent[${last_motd_index}]=0
+                echo -ne `date "${date_format}"` "- [MOTD] User '${it_euser}' added to MOTD list.\n"
+                echo -ne `date "${date_format}"` "- [MOTD] User '${it_euser}' added to MOTD list.\n" >> ${itmon_log}
+            fi
+        fi
+    fi
+
+    # Read last line from CSE system message log
+    read=`tail -n1 "${latest_admin_log}"`
+    if [[ ! "${read}" == "${admin_line}" ]]; then
+        admin_line=${read}
+        if [[ ${admin_line} =~ ${pm_re} ]]; then
+            # New message
+            msgsender=${BASH_REMATCH[1]}
+            msgtext=${BASH_REMATCH[2]}
+
+            # Clean up message text
+            msgtext=`echo "${msgtext}" | sed 's/<a [^>]*>//g'`
+            msgtext=`echo "${msgtext}" | sed 's/<\/a>//g'`
+            msgtext=`echo "${msgtext}" | sed 's/<span [^>]*>//g'`
+            msgtext=`echo "${msgtext}" | sed 's/<\/span>//g'`
+            msgtext=${msgtext//&apos;/\'}
+            msgtext=${msgtext//&quot;/\"}
+            msgtext=${msgtext//&lt;/<}
+            msgtext=${msgtext//&gt;/>}
+            msgtext=${msgtext//&amp;/&}
+            msgtext=${msgtext//<br \/>/ }
+
+            # Save to a file for queued sending
+            echo "${msgtext}" >> ${itadmin_file}
+            echo -ne `date "${date_format}"` "- [MSG] New admin message stored.\n"
+            echo -ne `date "${date_format}"` "- [MSG] New admin message stored.\n" >> ${itmon_log}
+        fi
+    fi
+
+    # Read last line from combat log
+    read=`tail -n1 "${latest_combat_log}"`
+    if [[ ! "${read}" == "${combat_line}" ]]; then
+        combat_line=${read}
+        if [[ ${combat_line} =~ ${join_re} ]]; then
+            # New join
+            dc_start=0            
+            combat_euser=${BASH_REMATCH[1]}
+            echo -ne `date "${date_format}"` "- [STATUS] User '${combat_euser}' joined _combat channel.\n"
+            echo -ne `date "${date_format}"` "- [STATUS] User '${combat_euser}' joined _combat channel.\n" >> ${itmon_log}
+
+            # Search MOTD user array. If name doesn't exist, add to array.
+            old_motd_user="no"
+            for i in ${motd_user[@]}; do
+                [[ "${combat_euser}" == "${i}" ]] && old_motd_user="yes"
+            done
+
+            # Search MOTD opt-out list. If name doesn't exist, add to array.
+            motd_optout_user="no"
+            while read -r oline || [[ -n ${oline} ]]; do
+                [[ "${oline}" == "${combat_euser}" ]] && motd_optout_user="yes"
+            done < ${optout_file}
+
+            if [[ "${old_motd_user}" == "no" ]] && [[ "${motd_optout_user}" == "no" ]]; then
+                last_motd_index=$(( ${last_motd_index} + 1 ))
+                motd_time[${last_motd_index}]=${date_epoch}
+                motd_user[${last_motd_index}]=${combat_euser}
+                motd_sent[${last_motd_index}]=0
+                echo -ne `date "${date_format}"` "- [MOTD] User '${combat_euser}' added to MOTD list.\n"
+                echo -ne `date "${date_format}"` "- [MOTD] User '${combat_euser}' added to MOTD list.\n" >> ${itmon_log}
+            fi
+        fi
+    fi
+done

@@ -1,0 +1,107 @@
+#! /bin/bash
+
+# Settings file location
+itmon_cfg="${HOME}/.itmon/itmon.cfg"
+
+# Log file location
+itmon_log="${HOME}/.itmon/itmon.log"
+
+# IT Chat log location
+itchat_file="${HOME}/.itmon/itchat.log"
+
+# IT Admin message log location
+itadmin_file="${HOME}/.itmon/itadmin.log"
+
+date_format="+%Y-%m-%d %H:%M:%S"
+
+while sleep 1; do
+    # Load settings file
+    . ${itmon_cfg}
+
+    # Read first line from chat log
+    line=`head -n1 ${itchat_file}`
+    if [[ ! "${line}" == "" ]]; then
+        msgsender=${line/%\ */}
+        msgtext=${line#*\ }
+
+        # Send message to iMessage recipients expecting every message
+        for i in ${imsg_all_ids[@]}; do
+            echo -ne `date "${date_format}"` "- [MSG] Sent iMessage to ${i}\n"
+            echo -ne `date "${date_format}"` "- [MSG] Sent iMessage to ${i}\n" >> ${itmon_log}
+            imessage "${i}" "[CSE IT] ${msgsender}: ${msgtext}"
+            sleep .5
+        done
+
+        # Send message to Pushover recipients expecting every message
+        for i in ${po_all_ids[@]}; do
+            echo -ne `date "${date_format}"` "- [MSG] Sent Pushover to ${i}\n"
+            echo -ne `date "${date_format}"` "- [MSG] Sent Pushover to ${i}\n" >> ${itmon_log}
+            cse-push "[CSE IT]" "${msgsender}: ${msgtext}" "${i}"
+            sleep .5
+        done
+
+        # Check if message contains test keywords
+        is_test_msg="no"
+        for i in "${msg_watch[@]}"; do
+            if [[ ${msgtext} =~ ${i} ]]; then
+                is_test_msg="yes"
+            fi
+        done
+
+        if [[ "${is_test_msg}" == "yes" ]]; then
+            #Send message to iMessage recipients expecting test messages
+            for i in ${imsg_min_ids[@]}; do
+                echo -ne `date "${date_format}"` "- [MSG] Sent iMessage to ${i}\n"
+                echo -ne `date "${date_format}"` "- [MSG] Sent iMessage to ${i}\n" >> ${itmon_log}
+                imessage "${i}" "[CSE IT] ${msgsender}: ${msgtext}"
+                sleep .5
+            done
+
+            #Send message to Pushover recipients expecting test messages
+            for i in ${po_min_ids[@]}; do
+                echo -ne `date "${date_format}"` "- [MSG] Sent Pushover to ${i}\n"
+                echo -ne `date "${date_format}"` "- [MSG] Sent Pushover to ${i}\n" >> ${itmon_log}
+                cse-push "[CSE IT]" "${msgsender}: ${msgtext}" "${i}"
+                sleep .5
+            done
+
+            #Send message to SMS recipients expecting test messages
+            for i in ${sms_min_ids[@]}; do
+                echo -ne `date "${date_format}"` "- [MSG] Sent SMS to ${i}\n"
+                echo -ne `date "${date_format}"` "- [MSG] Sent SMS to ${i}\n" >> ${itmon_log}
+                sms "${i}" "<CSE IT> ${msgsender}: ${msgtext}"
+                sleep .5
+            done
+        fi
+
+        # Remove first line from chat log
+        sed '1d' "${itchat_file}" > "${itchat_file}.tmp"
+        mv "${itchat_file}.tmp" "${itchat_file}"
+    fi
+
+    # Read first line from admin log
+    line=`head -n1 ${itadmin_file}`
+    if [[ ! "${line}" == "" ]]; then
+        msgtext=${line}
+
+        # Send message to iMessage recipients expecting every message
+        for i in ${imsg_all_ids[@]}; do
+            echo -ne `date "${date_format}"` "- [MSG] Sent iMessage to ${i}\n"
+            echo -ne `date "${date_format}"` "- [MSG] Sent iMessage to ${i}\n" >> ${itmon_log}
+            imessage "${i}" "[CSE IT] ADMIN NOTICE: ${msgtext}"
+            sleep .5
+        done
+
+        # Send message to Pushover recipients expecting every message
+        for i in ${po_all_ids[@]}; do
+            echo -ne `date "${date_format}"` "- [MSG] Sent Pushover to ${i}\n"
+            echo -ne `date "${date_format}"` "- [MSG] Sent Pushover to ${i}\n" >> ${itmon_log}
+            cse-push "[CSE IT]" "ADMIN NOTICE: ${msgtext}" "${i}"
+            sleep .5
+        done
+
+        # Remove first line from admin log
+        sed '1d' "${itadmin_file}" > "${itadmin_file}.tmp"
+        mv "${itadmin_file}.tmp" "${itadmin_file}"
+    fi
+done

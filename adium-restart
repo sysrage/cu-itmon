@@ -1,0 +1,5 @@
+#! /bin/bash
+
+killall -15 Adium
+sleep 1
+open /Applications/Adium.app/

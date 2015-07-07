@@ -1,0 +1,27 @@
+#! /bin/bash
+test $# -eq 0 && echo "Usage: echo hi | $0 chatroom" && exit 1
+
+export MESSAGE="`cat`"
+
+CHATROOM=$1
+
+# default to @chat.camelotunchained.com
+test `echo $CHATROOM | grep @` || CHATROOM=$CHATROOM@conference.chat.camelotunchained.com
+
+export CHATROOM
+
+/usr/bin/osascript <<EOL
+set stdinText to do shell script "echo \"\$MESSAGE\"" without altering line endings
+
+tell application "System Events" to set adiumRunning to (name of processes) contains "Adium"
+if adiumRunning then
+    tell application "Adium"
+
+        set new_chat to first chat whose name is "$CHATROOM"
+        send new_chat message stdinText
+
+    end tell
+else
+    display dialog "ERROR: You must run Adium" buttons "OK" default button "OK"
+end if
+EOL

@@ -1,0 +1,20 @@
+#!/bin/bash
+exec 1>>/tmp/pushover.log 2>&1
+echo "`date` $@"
+
+title="$1"
+message="$2"
+shift 2
+
+case "$#" in
+0) users="abcdefghijklmnopqrstuv" ;;
+*) users="$@" ;;
+esac
+
+for user in $users ; do
+    curl -s -F "token=abcdefghijklmnopqrstuv" \
+        -F "user=$user" \
+        -F "title=$title" \
+        -F "message=$message" \
+        https://api.pushover.net/1/messages.json
+done

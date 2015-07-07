@@ -1,0 +1,58 @@
+#! /bin/bash
+test $# -eq 0 && echo "Usage: echo hi | $0 user [otherusers] " && exit 1
+
+export MESSAGE="`cat`"
+
+while test "$1"; do
+
+BUDDY=$1
+
+# aliases
+test $BUDDY = friend1 && BUDDY=friend1.account
+test $BUDDY = friend2 && BUDDY=friend2.account
+# ..
+
+# default to @chat.camelotunchained.com
+test `echo $BUDDY | grep @` || BUDDY=$BUDDY@chat.camelotunchained.com
+
+export BUDDY
+
+/usr/bin/osascript <<EOL
+set stdinText to do shell script "echo \"\$MESSAGE\"" without altering line endings
+
+tell application "System Events" to set adiumRunning to (name of processes) contains "Adium"
+if adiumRunning then
+    tell application "Adium"
+        if not (exists (contact "$BUDDY")) then
+            tell account "user@chat.camelotunchained.com"
+                make new contact with properties {display name:"$BUDDY", name:"$BUDDY", group:contact group "JoinMSGS" of application "Adium"}
+            end tell
+        end if
+
+        set user to get contact "$BUDDY"
+
+        if not (exists (chats whose contacts contains user)) then
+            if not (exists (first chat window)) then
+                tell account of user
+                    set new_chat to make new chat with contacts {user} with new chat window
+                end tell
+            else
+                set existing_window to first chat window
+                tell account of user
+                    set new_chat to make new chat with contacts {user} in window existing_window
+                end tell
+            end if
+        else
+            set new_chat to first chat whose contacts contains user
+        end if
+
+        send new_chat message stdinText
+        tell new_chat to close
+    end tell
+else
+    display dialog "ERROR: You must run Adium" buttons "OK" default button "OK"
+end if
+EOL
+
+shift
+done
